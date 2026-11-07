@@ -79,7 +79,8 @@ max_age_days = 30
 #   "lmstudio"   local model through LM Studio's server (default http://localhost:1234/v1)
 #   "llamacpp"   llama.cpp server (default http://localhost:8080/v1)
 #   "vllm"       vLLM server (default http://localhost:8000/v1)
-#   "local"      any other OpenAI compatible server, set base_url
+#   "local"      any other OpenAI compatible server, set base_url. If it needs a key (OpenWebUI, a remote
+#                vLLM, a proxy), put LLM_API_KEY in .env; it is sent as a Bearer token to this server only
 #   "anthropic"  Claude, needs ANTHROPIC_API_KEY
 #   "openai"     OpenAI, needs OPENAI_API_KEY
 # See docs/local-llm.md for setting up a local model.

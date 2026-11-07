@@ -58,7 +58,7 @@ Set `[llm]` in `config.toml`, or choose it in **Settings, AI model**:
 | `builtin` | press Download once in Settings | Local and free, set up by Stellenpilot. `model = "standard"` or `"light"`. |
 | `ollama` | Ollama running, a pulled model | Local and free. |
 | `lmstudio` | LM Studio with its server started | Local and free. |
-| `llamacpp`, `vllm`, `local` | a running server | Any OpenAI compatible local server. |
+| `llamacpp`, `vllm`, `local` | a running server | Any OpenAI compatible server. Add `LLM_API_KEY` in `.env` if the server asks for a key (OpenWebUI, vLLM with `--api-key`, a remote server). |
 | `anthropic` | `ANTHROPIC_API_KEY` in `.env` | Claude through the Anthropic API. |
 | `openai` | `OPENAI_API_KEY` in `.env` | OpenAI API. |
 | `none` | nothing | Keyword scoring and template letters. |

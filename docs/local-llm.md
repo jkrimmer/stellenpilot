@@ -58,6 +58,25 @@ pip install "llama-cpp-python[server]"
 python -m llama_cpp.server --model Qwen3.5-4B-Q4_K_M.gguf --n_ctx 8192 --port 8080
 ```
 
+### A server that asks for an API key (OpenWebUI, remote vLLM, a proxy)
+
+If the server rejects requests without a key, put the key in `.env` next to `config.toml`:
+
+```bash
+LLM_API_KEY=your-key-here
+```
+
+```toml
+[llm]
+provider = "local"
+model = "the model id the server lists"
+base_url = "http://localhost:3000/api"   # OpenWebUI: its /api address; vLLM: usually ends in /v1
+```
+
+Stellenpilot sends the key as `Authorization: Bearer ...` to that server only. It is also the key the dashboard's **Other local server** setup asks for, and the Settings page shows whether it is saved. Check with `stellenpilot doctor`.
+
+Note: a server on another computer (or in the cloud) receives your CV and the job ads, so use one you trust and that uses HTTPS if it is reachable from the internet.
+
 ## Which model?
 
 Pick a model trained to follow instructions ("instruct" or "chat" versions). The tool asks for JSON answers, and instruction tuned models handle that much better.

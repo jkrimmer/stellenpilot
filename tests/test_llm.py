@@ -1,11 +1,14 @@
 """Local LLM support, tested against a fake server that speaks the Ollama and OpenAI APIs."""
 import json
+import os
 import tempfile
 import unittest
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+from unittest import mock
 
 from stellenpilot.config import Settings
+from stellenpilot.http import HttpError
 from stellenpilot.llm import LLM, parse_json
 
 SEEN = []
@@ -13,6 +16,7 @@ SEEN = []
 
 class Fake(BaseHTTPRequestHandler):
     reject_json_mode = False
+    api_key = None  # when set, every request must send "Authorization: Bearer <api_key>"
 
     def log_message(self, *a):
         pass
@@ -25,7 +29,15 @@ class Fake(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _authorized(self) -> bool:
+        if Fake.api_key is None or self.headers.get("Authorization") == f"Bearer {Fake.api_key}":
+            return True
+        self._send(401, {"error": "invalid api key"})
+        return False
+
     def do_GET(self):
+        if not self._authorized():
+            return
         if self.path == "/api/tags":
             return self._send(200, {"models": [{"name": "qwen2.5:7b"}]})
         if self.path == "/v1/models":
@@ -34,6 +46,8 @@ class Fake(BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if not self._authorized():
+            return
         SEEN.append((self.path, body))
         if self.path == "/api/chat":
             return self._send(200, {"message": {"content": '{"match": 77}'}})
@@ -63,11 +77,34 @@ class LocalLLMTests(unittest.TestCase):
     def setUp(self):
         SEEN.clear()
         Fake.reject_json_mode = False
+        Fake.api_key = None
         self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.home = Path(self.tmp.name)
 
     def tearDown(self):
         self.tmp.cleanup()
+        Fake.api_key = None
+
+    def test_api_key_is_sent_to_openai_compatible_server(self):
+        Fake.api_key = "remote-secret"
+        with mock.patch.dict(os.environ, {"LLM_API_KEY": "remote-secret"}):
+            llm = LLM(settings_for(self.home, provider="vllm", model="local-model", base_url=self.base + "/v1"))
+            self.assertEqual(llm.complete_json("sys", "user")["match"], 66)
+            self.assertEqual(llm.list_models(), ["local-model"])
+
+    def test_server_that_needs_a_key_refuses_without_one(self):
+        Fake.api_key = "remote-secret"
+        llm = LLM(settings_for(self.home, provider="local", model="local-model", base_url=self.base + "/v1"))
+        with self.assertRaises(HttpError) as cm:
+            llm.list_models()
+        self.assertEqual(cm.exception.status, 401)
+
+    def test_openai_provider_with_base_url_takes_llm_api_key(self):
+        Fake.api_key = "remote-secret"
+        with mock.patch.dict(os.environ, {"LLM_API_KEY": "remote-secret"}, clear=False):
+            os.environ.pop("OPENAI_API_KEY", None)
+            llm = LLM(settings_for(self.home, provider="openai", model="local-model", base_url=self.base + "/v1"))
+            self.assertEqual(llm.complete_json("sys", "user")["match"], 66)
 
     def test_ollama_native_api_sets_context_and_json(self):
         llm = LLM(settings_for(self.home, provider="ollama", model="qwen2.5:7b", base_url=self.base, num_ctx=16384))
