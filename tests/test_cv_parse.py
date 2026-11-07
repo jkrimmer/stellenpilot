@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from stellenpilot import cv_parse as cp
-from stellenpilot.importer import IMPORT_SYSTEM, sort_cv, verify
+from stellenpilot.importer import IMPORT_SYSTEM, _review_rules, sort_cv, verify
 
 SAMPLES = Path(__file__).parent / "cv_samples"
 
@@ -143,20 +143,52 @@ class LineNumberTests(unittest.TestCase):
         self.assertEqual(sections["summary"], [])  # the model listed nearly every line as "summary"
         self.assertEqual([i["text"] for i in sections["top"]][0], "Max Mustermann")
 
-    def test_ai_is_used_only_when_the_rules_are_unsure(self):
+    def test_ai_checks_clean_cvs_without_changing_them(self):
         llm = FakeLLM(RECORDED["data_engineer_en.txt"])
-        _, how, _ = sort_cv(sample("data_engineer_en.txt"), llm)
-        self.assertEqual((how, llm.calls), ("rules", []))
+        prof, how, _ = sort_cv(sample("data_engineer_en.txt"), llm)
+        self.assertEqual((how, llm.calls), ("rules", ["lines"]))
+        self.assertEqual(summary(verify(prof, sample("data_engineer_en.txt"))[0]), EXPECTED["data_engineer_en.txt"])
 
-    def test_line_numbers_then_full_ai_as_last_resort(self):
+    def test_ai_review_fills_what_the_rules_left_out(self):
+        from stellenpilot.importer import contact_facts
+        text = sample("data_engineer_en.txt")
+        prof = cp.build(cp.by_rules(text), contact_facts(text))
+        prof["skills"], prof["person"]["summary"] = {}, ""
+        llm = FakeLLM(RECORDED["data_engineer_en.txt"])
+        filled, how = _review_rules(text, llm, contact_facts(text), prof)
+        self.assertEqual(how, "rules-ai")
+        self.assertTrue(filled["skills"])
+        self.assertTrue(filled["person"]["summary"].startswith("Data professional with 3+ years"))
+
+    def test_failing_ai_review_keeps_the_rules_result(self):
+        class Broken(FakeLLM):
+            def complete_json(self, system, user, max_tokens=1500):
+                raise ValueError("LLM did not return JSON")
+
+        text = sample("data_engineer_en.txt")
+        prof, how, _ = sort_cv(text, Broken({}))
+        self.assertEqual(how, "rules")
+        self.assertEqual(summary(verify(prof, text)[0]), EXPECTED["data_engineer_en.txt"])
+
+    def test_incomplete_job_is_read_again_from_its_own_lines(self):
         text = sample("messy_columns.txt")
         good = {"experience": [3], "education": [6]}
         llm = FakeLLM(good, full_answer={"experience": [{"title": "Data Scientist", "company": "Bonn Analytics GmbH",
-                                                          "dates": "2021 – 2024", "bullets": []}]})
+                                                          "dates": "2021 – 2024", "bullets": []}],
+                                         "education": [{"degree": "M.Sc. Statistics", "school": "University of Bonn",
+                                                        "dates": "2019 – 2021"}]})
         prof, how, _ = sort_cv(text, llm)
-        # Columns run into each other, so the line ranges give a job without a company: ask for the full answer.
-        self.assertEqual((how, llm.calls), ("ai-full", ["lines", "full"]))
+        # Columns run into each other, so the line ranges give a job and a degree without company or school:
+        # only those are read again.
+        self.assertEqual((how, llm.calls), ("ai-lines", ["lines", "full"]))
         self.assertEqual(prof["experience"][0]["company"], "Bonn Analytics GmbH")
+        self.assertEqual(prof["education"][0]["school"], "University of Bonn")
+
+    def test_full_ai_as_last_resort_when_the_retry_finds_nothing(self):
+        text = sample("messy_columns.txt")
+        llm = FakeLLM({"experience": [3], "education": [6]}, full_answer={"experience": [{"title": "Data Scientist"}]})
+        prof, how, _ = sort_cv(text, llm)
+        self.assertEqual((how, llm.calls), ("ai-full", ["lines", "full", "full"]))
 
     def test_nonsense_answer_falls_back(self):
         llm = FakeLLM({"summary": ["Data professional with 3+ years"], "experience": "lots"}, full_answer={})
