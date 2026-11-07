@@ -2,7 +2,7 @@
 
 ## What the AI does for you
 
-* **Reads your CV.** Drop a PDF or Word file and it becomes a structured profile. A CV with clear headings is sorted in about a second, without any AI; with an AI model on, the AI then checks that result and fills anything the headings missed. For other layouts the AI only points at line numbers, and re-reads just the jobs or degrees it left incomplete, so even a laptop needs just a minute or two. Every word is copied from your CV, and anything left out is flagged.
+* **Reads your CV.** Drop a PDF or Word file and it becomes a structured profile. A CV with clear headings is sorted in about a second, without any AI; for other layouts the AI only points at line numbers, so even a laptop needs just a minute or two. Every word is copied from your CV, and anything left out is flagged.
 * **Scores every job** from 0 to 100 with a one line reason and the honest gaps (for example "asks for dbt, which you are still learning").
 * **Understands German job ads.** It finds the German level an ad really needs (A1 to C2, from phrases like "verhandlungssicher" or "gute Deutschkenntnisse"), compares it with yours, and writes an English summary of every German ad.
 * **Tailors your CV.** It picks and orders the experience, projects and skills from your profile that matter most for this job, and chooses the best fitting headline. Four layouts: Modern (the default, dates on the right), Classic, Compact, or a German Lebenslauf with dates first. Each job gets one short folder: the PDFs to send on top, the Word files and your gap notes in `edit`.

@@ -2,9 +2,8 @@
 
 The AI only sorts your CV into sections. Every bullet and skill it returns is checked against
 your original text; anything that is not in your CV is dropped and listed for you to check.
-A CV with clear headings is sorted by its headings (see cv_parse.py); with an AI configured, the AI then
-checks that result by line numbers and fills what the headings missed. Otherwise the AI points at line
-numbers, re-reads any entry it left incomplete, and only as a last resort copies the CV. When nothing fits and there is no AI, your CV
+A CV with clear headings is sorted without any AI (see cv_parse.py); otherwise the AI points at line
+numbers, and only as a last resort copies the CV. When nothing fits and there is no AI, your CV
 text is placed in the file as comments to copy from. The CV text is also kept in cv_source.txt, so
 it can be read again once you turn on an AI.
 """
@@ -440,112 +439,34 @@ def _full_ai(text: str, llm, contact: dict) -> dict:
     return data
 
 
-KINDS = ("experience", "projects", "education")
-
-
-def _complete(kind: str, e: dict) -> bool:
-    """A job needs a title and a company, a degree a school, a project a name."""
-    if kind == "education":
-        return bool(e.get("degree") and e.get("school"))
-    if kind == "experience":
-        return bool(e.get("title") and e.get("company"))
-    return bool(e.get("name"))
-
-
-def _read_again(text: str, llm, todo: dict) -> dict[str, list[dict]]:
-    """Entries the line answer left incomplete are read again from their own lines only, not the whole CV.
-    Returns the complete entries the AI wrote, at most one per incomplete entry."""
-    from . import cv_parse
-    raw = text.splitlines()
-    snippets = []
-    for kind in KINDS:
-        for g in todo[kind]:
-            nums = sorted({no for it in g for no in it["lines"]})
-            snippets.append("\n".join(raw[no - 1] for no in nums))
-    try:
-        data = structure_with_llm("\n\n".join(snippets), llm)
-    except Exception:
-        return {k: [] for k in KINDS}
-    data = data if isinstance(data, dict) else {}
-    return {k: [e for e in _list(data.get(k)) if isinstance(e, dict) and _complete(k, e)][:len(todo[k])]
-            for k in KINDS}
-
-
-def _profile_from_lines(text: str, llm, contact: dict, answer: dict, retry: bool) -> tuple[dict, int]:
-    """The profile an AI line answer describes. Incomplete entries are read again when `retry` is on.
-    Returns the profile and how many incomplete entries are still unresolved."""
-    from . import cv_parse
-    sections, groups = cv_parse.by_line_numbers(answer, text)
-    done = {k: [] for k in KINDS}
-    todo = {k: [] for k in KINDS}
-    for k in KINDS:
-        for g in groups.get(k, []):
-            if _complete(k, cv_parse.entry(g, k)):
-                done[k].append(g)
-            else:
-                todo[k].append(g)
-    profile = cv_parse.build(sections, contact, done)
-    if not any(todo.values()):
-        return profile, 0
-    if not retry:
-        return profile, sum(len(v) for v in todo.values())
-    fixed = _read_again(text, llm, todo)
-    for k in KINDS:
-        profile[k].extend(fixed[k])
-    return profile, sum(max(0, len(todo[k]) - len(fixed[k])) for k in KINDS)
-
-
-def _review_rules(text: str, llm, contact: dict, profile: dict) -> tuple[dict, str]:
-    """The headings sorted the CV, so the AI is a second opinion: it reads the same numbered lines and only
-    fills what the rules left out (more jobs, projects or degrees, or empty skills and summary)."""
-    from . import cv_parse, progress
-    progress.stage("Checking the sorted CV with the AI", expect=40 + 2 * sum(1 for ln in text.splitlines() if ln.strip()))
-    try:
-        answer = llm.complete_json(cv_parse.LINES_SYSTEM, cv_parse.numbered(text[:16000]), max_tokens=900)
-        ai, _ = _profile_from_lines(text, llm, contact, answer, retry=False)
-    except Exception:  # the rules result stands
-        return profile, "rules"
-    changed = False
-    for k in KINDS:
-        if len(ai[k]) > len(profile[k]):
-            profile[k] = ai[k]
-            changed = True
-    if not profile["skills"] and ai["skills"]:
-        profile["skills"] = ai["skills"]
-        changed = True
-    if not profile["person"].get("summary") and ai["person"].get("summary"):
-        profile["person"]["summary"] = ai["person"]["summary"]
-        changed = True
-    return profile, "rules-ai" if changed else "rules"
-
-
 def sort_cv(text: str, llm=None) -> tuple[dict, str, str]:
-    """The profile from CV text, the way it was found ("rules", "rules-ai", "ai-lines", "ai-full" or
-    "rules-partial") and, for a partial result, why the rules were unsure. Fastest way first:
+    """The profile from CV text, the way it was found ("rules", "ai-lines", "ai-full" or "rules-partial")
+    and, for a partial result, why the rules were unsure. Fastest way first:
     1. headings, dates and bullets: instant, and enough for most clean CVs;
-    2. with an AI, it checks that result by line numbers and fills what the rules missed ("rules-ai");
-    3. if the headings were unclear, the AI answers with line numbers; incomplete entries are read again
-       from their own lines only: a minute or two on a laptop;
-    4. the AI copies the CV into the profile: slow, for layouts the first three could not sort."""
+    2. the AI answers with line numbers only: a minute or two on a laptop;
+    3. the AI copies the CV into the profile: slow, for layouts the first two could not sort."""
     from . import cv_parse, progress
     contact = contact_facts(text)
     progress.stage("Sorting your CV by its headings")
     sections = cv_parse.by_rules(text)
     profile = cv_parse.build(sections, contact)
     ok, why = cv_parse.good_enough(profile, sections, text)
-    if not (llm and llm.enabled):
-        return (profile, "rules", "") if ok else (profile, "rules-partial", why)
     if ok:
-        profile, how = _review_rules(text, llm, contact, profile)
-        return profile, how, ""
+        return profile, "rules", ""
+    if not (llm and llm.enabled):
+        return profile, "rules-partial", why
     lines = cv_parse.numbered(text[:16000])
+    # The answer is a few line ranges: about 40 characters per job, project or degree plus the frame.
     # The answer is a short list of line numbers, a few characters per CV line at most.
     progress.stage("Finding where your jobs, projects and degrees start (AI)",
                    expect=40 + 2 * sum(1 for ln in text.splitlines() if ln.strip()))
     try:
         answer = llm.complete_json(cv_parse.LINES_SYSTEM, lines, max_tokens=900)
-        p2, unresolved = _profile_from_lines(text, llm, contact, answer, retry=True)
-        if (p2["experience"] or p2["projects"]) and not unresolved:
+        s2, e2 = cv_parse.by_line_numbers(answer, text)
+        p2 = cv_parse.build(s2, contact, e2)
+        complete = (all(e["title"] and e["company"] for e in p2["experience"])
+                    and all(e["degree"] and e["school"] for e in p2["education"]))
+        if (p2["experience"] or p2["projects"]) and complete:
             if not p2["skills"]:
                 p2["skills"] = profile["skills"]
             return p2, "ai-lines", ""
