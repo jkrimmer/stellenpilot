@@ -15,6 +15,8 @@ ENV_TEMPLATE = """# Secrets for stellenpilot. This file is ignored by git. Never
 # LLM (pick one, matching llm.provider in config.toml)
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
+# Key for an OpenAI compatible server that asks for one (OpenWebUI, vLLM, a proxy). Leave empty for a local server.
+LLM_API_KEY=
 # Optional job sources
 ADZUNA_APP_ID=
 ADZUNA_APP_KEY=

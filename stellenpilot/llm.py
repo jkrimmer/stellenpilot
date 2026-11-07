@@ -56,9 +56,10 @@ class LLM:
         # Small local models have small context windows; long ads get cut to this many characters.
         self.max_chars = int(c.get("max_input_chars") or (4000 if self.local else 6000))
         self.settings = settings
+        self.api_key = self._api_key()
         if self.provider == "anthropic" and not settings.secret("ANTHROPIC_API_KEY"):
             raise RuntimeError("llm.provider is anthropic but ANTHROPIC_API_KEY is not set")
-        if self.provider == "openai" and not settings.secret("OPENAI_API_KEY") and not self.base_url:
+        if self.provider == "openai" and not self.api_key and not self.base_url:
             raise RuntimeError("llm.provider is openai but OPENAI_API_KEY is not set")
         if self.provider == "builtin":
             from . import builtin
@@ -72,6 +73,18 @@ class LLM:
     @property
     def enabled(self) -> bool:
         return self.provider != "none"
+
+    def _api_key(self) -> str | None:
+        """Key sent to an OpenAI compatible server. LLM_API_KEY works for any of them (OpenWebUI, vLLM started
+        with --api-key, a proxy). The openai provider also accepts OPENAI_API_KEY, as it always has."""
+        if self.provider == "openai":
+            return self.settings.secret("OPENAI_API_KEY") or self.settings.secret("LLM_API_KEY")
+        if self.provider in LOCAL_PRESETS and self.provider not in ("ollama", "builtin"):
+            return self.settings.secret("LLM_API_KEY")
+        return None
+
+    def _auth_headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
 
     # ------------------------------------------------------------ calls
 
@@ -123,14 +136,13 @@ class LLM:
                 with progress.aside("Starting the built-in AI (loading the model into memory)"):
                     self.base_url = builtin.ensure_running(self.model)
         base = self.base_url or "https://api.openai.com/v1"
-        key = self.settings.secret("OPENAI_API_KEY")
         body = {"model": self.model, "max_tokens": max_tokens, "temperature": self.temperature,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
         if want_json and self.json_mode:
             body["response_format"] = {"type": "json_object"}
         if self.provider == "builtin":
             body["chat_template_kwargs"] = {"enable_thinking": self.think}  # Qwen3.5 thinks by default; slow on a CPU
-        headers = {"Authorization": f"Bearer {key}"} if key and not self.local else {}
+        headers = self._auth_headers()
         if self.provider == "builtin":
             from . import builtin
             headers = builtin.auth_headers()  # the engine is started with a fresh key each time
@@ -214,7 +226,7 @@ class LLM:
         if self.provider == "ollama":
             data = request_json(f"{self.base_url}/api/tags", timeout=10, retries=0)
             return [m.get("name", "") for m in data.get("models", [])]
-        data = request_json(f"{self.base_url}/models", timeout=10, retries=0)
+        data = request_json(f"{self.base_url}/models", timeout=10, retries=0, headers=self._auth_headers())
         return [m.get("id", "") for m in data.get("data", [])]
 
 

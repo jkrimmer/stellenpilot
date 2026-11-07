@@ -42,7 +42,7 @@ CHOICES = {("llm", "provider"): {"none", "builtin", "ollama", "lmstudio", "llama
            ("tailor", "letter_language"): {"auto", "en", "de"},
            ("tailor", "cv_style"): {"modern", "classic", "compact", "lebenslauf"},
            ("ui", "language"): {"auto", "en", "de"}}
-SECRETS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "ADZUNA_APP_ID", "ADZUNA_APP_KEY", "THEIRSTACK_API_KEY")
+SECRETS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY", "ADZUNA_APP_ID", "ADZUNA_APP_KEY", "THEIRSTACK_API_KEY")
 
 
 _TRUE, _FALSE = {"true", "1", "yes", "on"}, {"false", "0", "no", "off", ""}

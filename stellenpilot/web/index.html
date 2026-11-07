@@ -916,6 +916,7 @@ body.wizopen{overflow:hidden}
             <label data-for="anthropic">Anthropic API key <span class="keyset" data-key="ANTHROPIC_API_KEY"></span><input class="input" name="ANTHROPIC_API_KEY" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
             <label data-for="openai">OpenAI API key <span class="keyset" data-key="OPENAI_API_KEY"></span><input class="input" name="OPENAI_API_KEY" type="password" autocomplete="off" placeholder="sk-..."></label>
             <label data-for="local llamacpp vllm lmstudio ollama">Server address <span class="muted">Leave empty for the usual one.</span><input class="input" name="base_url" placeholder="http://localhost:11434"></label>
+            <label data-for="local llamacpp vllm lmstudio">API key <span class="muted">Only if your server asks for one, e.g. OpenWebUI or vLLM with --api-key.</span> <span class="keyset" data-key="LLM_API_KEY"></span><input class="input" name="LLM_API_KEY" type="password" autocomplete="off" placeholder="Leave empty for a server without a key"></label>
             <div class="btnrow" data-for="ollama lmstudio anthropic openai llamacpp vllm local"><button type="button" class="btn sec" id="aiTest">Save and test</button><span id="aiTestMsg" role="status"></span></div>
             <div id="rereadBox" hidden><div class="btnrow" style="margin-top:12px;align-items:center"><span id="rereadMsg" role="status">Your profile has no jobs or projects yet. The AI can read your CV again and fill them in.</span><button type="button" class="btn sec" id="rereadBtn">Read my CV again</button></div></div>
           </section>
@@ -1147,6 +1148,7 @@ body.wizopen{overflow:hidden}
         </ol>
         <label class="wfield">Model<input class="input" id="wLocalModel" placeholder="e.g. qwen3.5:4b" autocomplete="off" style="font-weight:400"></label>
         <label class="wfield">Server address<input class="input" id="wLocalUrl" placeholder="http://localhost:8080/v1" autocomplete="off" style="font-weight:400"></label>
+        <label class="wfield">API key <span class="muted">(only if the server asks for one)</span><input class="input" id="wLocalKey" type="password" placeholder="Leave empty for a server without a key" autocomplete="off" style="font-weight:400"></label>
         <div class="btnrow"><button type="button" class="btn sec" id="wLocalTest">Test</button><span id="wLocalMsg" role="status"></span></div>
       </div>
       <div class="whow" data-how="anthropic" hidden>
@@ -1261,7 +1263,7 @@ const DE={
 "Get a Claude API key":"Claude API Schlüssel besorgen","Add a little credit under":"Lade unter",". A daily search usually costs a few cents.":" ein wenig Guthaben auf. Eine tägliche Suche kostet meist ein paar Cent.",
 ", create a key, paste it below and press":", erstelle einen Schlüssel, füge ihn unten ein und klicke auf",". Model":". Das Modell","is fast and cheap.":"ist schnell und günstig.","Get an OpenAI API key":"OpenAI API Schlüssel besorgen",
 ", create a key, paste it below with a model name, and press":", erstelle einen Schlüssel, füge ihn mit einem Modellnamen unten ein und klicke auf","Anthropic API key":"Anthropic API Schlüssel","OpenAI API key":"OpenAI API Schlüssel",
-"Server address":"Serveradresse","Leave empty for the usual one.":"Leer lassen für die übliche.","Saving and testing…":"Wird gespeichert und getestet…",
+"Server address":"Serveradresse","Leave empty for the usual one.":"Leer lassen für die übliche.","Only if your server asks for one, e.g. OpenWebUI or vLLM with --api-key.":"Nur wenn der Server einen verlangt, z. B. OpenWebUI oder vLLM mit --api-key.","Leave empty for a server without a key":"Leer lassen, wenn der Server keinen Schlüssel verlangt","(only if the server asks for one)":"(nur wenn der Server einen verlangt)","Saving and testing…":"Wird gespeichert und getestet…",
 "Your profile has no jobs or projects yet. The AI can read your CV again and fill them in.":"Dein Profil hat noch keine Jobs oder Projekte. Die KI kann deinen Lebenslauf erneut lesen und sie eintragen.","Read my CV again":"Lebenslauf erneut lesen",
 "Starting…":"Startet…","✓ Your CV is read and saved. Check it under My CV.":"✓ Dein Lebenslauf ist gelesen und gespeichert. Prüfe ihn unter Mein Lebenslauf.",
 "Documents and German":"Unterlagen und Deutsch","When CVs and letters are made, and in which language.":"Wann Lebensläufe und Anschreiben erstellt werden, und in welcher Sprache.","My German level":"Mein Deutschniveau","From my CV":"Aus meinem Lebenslauf",
@@ -2502,7 +2504,8 @@ async function wTest(provider="ollama"){
     :{provider,model:W("wModel").value,...(wz.prevAi!==provider?{base_url:""}:{})};
   if(local&&(!llm.model||!llm.base_url)){m.textContent="Fill in the model and the server address.";m.style.color="var(--pill-rejected-fg)";return false}
   m.textContent="Testing…";m.style.color="";
-  try{await api("POST","/api/settings",{llm});wz.prevAi=provider;
+  const key=local?W("wLocalKey").value.trim():"";
+  try{await api("POST","/api/settings",{llm,...(key?{keys:{LLM_API_KEY:key}}:{})});wz.prevAi=provider;
     const r=await api("GET","/api/check"),c=r.checks.find(x=>x.step==="ai");wz.aiOk=c.ok;
     m.textContent=(c.ok?"✓ ":"")+ts(c.text.replace(/^AI model: /,"").replace(/\s*\(\w+\)$/,""));m.style.color=c.ok?"var(--ok-fg)":"var(--pill-rejected-fg)";return c.ok}
   catch(e){m.textContent=e.message;m.style.color="var(--pill-rejected-fg)";return false}
